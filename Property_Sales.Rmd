@@ -1,0 +1,540 @@
+---
+title: "Property Sales"
+author: "Sourav Dutta"
+date: "4/6/2021"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+options(scipen = 999)
+```
+
+### Load Required Packages
+```{r}
+library(ggplot2)
+library(corrplot)
+#library(plyr)
+#library(dplyr)
+#library(caret)
+#library(car)
+#library(Rmisc)
+#library(leaps)
+#library(MASS)
+#library(psych)
+```
+
+### Load the data file in R Envoronment
+```{r}
+getwd()
+property <- read.csv("/Users/souravdutta/Downloads/property-sales.csv")
+head(property,5)
+```
+**Question 1**: Explore the dataset.
+#### Column Names
+```{r}
+colnames(property)
+```
+As per the document, we have 18 columns in our Dataset.
+
+### Structure of DataSet
+
+```{r}
+str(property)
+dim(property)
+```
+Our Dataset has **1460** rows and ***18** columns
+
+### Missing Data
+```{r}
+colSums(is.na(property))
+```
+The dataset is clean and does not have any missing values.
+
+#### Summary Statistics
+```{r}
+summary(property)
+```
+### Exploring Some of the most important variables
+
+#### Sale Price
+```{r}
+ggplot(data = property, aes(SalePrice)) + 
+  geom_histogram(fill = "firebrick2", binwidth = 10000) + 
+  scale_x_continuous(breaks = seq(0, 800000, by = 100000)) + 
+  geom_vline(aes(xintercept = mean(SalePrice)), color = "darkred", linetype = "dashed", size = 1) + 
+  annotate("text", 
+          x = 320000,
+          y = 105,
+          label = paste("Mean of Sale Price = ", round(mean(property$SalePrice))),
+          col = "darkred",
+          size = 3) + 
+  labs(title = "Distribution of Sale Price",
+       x = "Sales Price", 
+       y = "Count") + theme_minimal()
+```
+<br>
+As can be seen from the graph, the Sale Price variable is highly skewed which means that only few people can afford very expensive houses, so the majority of houses costs under 300000.
+
+```{r}
+summary(property$SalePrice)
+```
+<br>
+### Correlations among the variables
+```{r}
+numericvars <- which(sapply(property, is.numeric))
+numericVarNames <- names(numericvars)
+cat('There are', length(numericvars), 'numeric Variables')
+```
+
+```{r}
+all_nvar <- property[, numericvars]
+cor_nvar <- cor(all_nvar, use = "pairwise.complete.obs")
+# Sort on decreasing correlations with SalePrice
+corrplot.mixed(cor_nvar, tl.col = "black", tl.pos = "lt", 
+               tl.cex = 1, cl.cex = 1)
+```
+### Correlations with Sale Price
+```{r}
+# Sort on decreasing correlations with SalePrice
+col_sor <- as.matrix(sort(cor_nvar[,'SalePrice'], decreasing = TRUE))
+# Select only high correlations with SalePrice
+high_cor <- names(which(apply(col_sor, 1, function(x) abs(x) > 0.5)))
+cor_nvar <- cor_nvar[high_cor, high_cor]
+corrplot.mixed(cor_nvar, tl.col = "black", tl.pos = "lt",
+               tl.cex = 1.5, cl.cex = 0.8)
+```
+<br>
+#### Overall Quality
+```{r}
+ggplot(data = property, aes(x = factor(OverallQual), y = SalePrice)) +
+  geom_boxplot(fill = "royalblue", col = "royalblue4") + 
+  labs(title = "Overall Quality vs Sale Price", 
+       x = "Overall Quality",
+       y = "Sale Price") + 
+  theme_classic()
+```
+```{r}
+ggplot(data = property, aes(x = OverallQual, y = SalePrice)) +
+  geom_smooth(fill = "royalblue", col = "royalblue4") + 
+  labs(title = "Overall Quality vs Sale Price", 
+       x = "Overall Quality",
+       y = "Sale Price") + 
+  theme_classic()
+```
+<br>
+There is an overall increasing trend, with increasing house quality sales price also goes up.
+
+#### Above Grade (Ground) Living Area (square feet) - GrLivArea
+```{r}
+ggplot(data = property, aes(x = GrLivArea, y = SalePrice)) + 
+  geom_point(col = "green4") + 
+  geom_smooth(method = "lm", se = FALSE, color = "darkgreen", aes(group = 1)) + 
+  scale_y_continuous(breaks = seq(0, 800000, by = 100000)) + 
+  geom_text(aes(label = ifelse(property$GrLivArea[!is.na(property$SalePrice)] > 4500, rownames(property), ''))) + 
+  labs(title = "GrLivArea vs Sales Price",
+       x = "Above Grade (Ground) Living Area (square feet)",
+       y = "Sale Price") + theme_light()
+```
+<br>
+The two houses with really big living area and very low sales price seems like and outlier. Also the Overall Quality can be biased because of its low price. As we have seen that Overall Quality has the highest correlation with Sale Price, bias in Overall Quality might negatively impact the final model.
+```{r}
+property[c(524, 1299), c('SalePrice', 'GrLivArea', 'OverallQual')]
+```
+
+#### Garage Area vs Sale Price
+```{r}
+ggplot(data = property, aes(x = GarageArea, y = SalePrice)) + 
+  geom_point(col = "deeppink") + 
+  geom_smooth(method = "lm", se = FALSE, color = "deeppink4", aes(group = 1)) + 
+  scale_y_continuous(breaks = seq(0, 800000, by = 100000)) + 
+  labs(title = "Garage Area vs Sales Price",
+       x = "Garage Area",
+       y = "Sale Price") + theme_light()
+```
+<br>
+#### Year Built
+```{r}
+ggplot(data = property, aes(x = YearBuilt, y = SalePrice)) +
+  geom_smooth(fill = "royalblue", col = "royalblue4") + 
+  labs(title = "Year Built vs Sale Price", 
+       x = "Year Built",
+       y = "Sale Price") + 
+  theme_classic()
+```
+<br>
+### Categorical Variable with Sale Price
+
+```{r}
+cat_vars <- which(sapply(property, is.character))
+catVarNames <- names(cat_vars)
+cat('There are ', length(cat_vars), 'categorical Variables')
+```
+<br>
+#### Important Categorical Variables
+```{r}
+ggplot(data = property, aes(x = factor(MSZoning), y = SalePrice)) +
+  geom_boxplot(fill = "royalblue", col = "royalblue4") + 
+  labs(title = "MSZoning vs Sale Price", 
+       x = "MSZoning",
+       y = "Sale Price") + theme_gray()
+```
+<br>
+The MSZonig does not necessarily indicates the relationship between SalePrice and MSZoning of the house
+```{r}
+ggplot(data = property, aes(x = factor(HouseStyle), y = SalePrice)) +
+  geom_boxplot(fill = "tan2", col = "tan3") + 
+  labs(title = "House Style vs Sale Price", 
+       x = "House Style",
+       y = "Sale Price") + theme_gray()
+```
+<br>
+#### Bi-Variate Relationships
+```{r}
+ggplot(data = property, aes(x = GrLivArea, y = SalePrice, col = factor(HouseStyle))) + 
+  geom_point() + 
+  scale_y_continuous(breaks = seq(0, 800000, by = 100000)) + 
+  geom_text(aes(label = ifelse(property$GrLivArea[!is.na(property$SalePrice)] > 4500, rownames(property), ''))) + 
+  labs(title = "GrLivArea vs Sales Price by House Style",
+       x = "Above Grade (Ground) Living Area (square feet)",
+       y = "Sale Price",
+       col = 'House Style') + theme_bw()
+```
+<br>
+The above graph does not show any significant relationship of Sales price by House style but it does give us an insight that 2 story houses, as expected, are more expensive and have more living area. it also gives us the clarity about the outliers here which are also 2 story house with exceptionally large living area but very low sale price.
+
+```{r}
+ggplot(data = property, aes(x = factor(OverallQual), y = SalePrice, fill = CentralAir)) +
+  geom_boxplot() + 
+  labs(title = "Overall Quality vs Sale Price", 
+       x = "Overall Quality",
+       y = "Sale Price") + 
+  theme_minimal()
+```
+<br>
+The Above graph clearly states that in any quality house, if the house has Central Air conditioning, it is more expensive and as expected as the quality goes up, all the houses has Central Air conditioning.
+
+**Question 2**: Develop a regression model to predict SalePrice from one or more of the other variables.
+### Linear Regression Model 
+We start with the variables having correlation more than 0.5
+#### Fit a Linear regression Model with Outliers
+```{r}
+reg_sales <- lm(SalePrice ~ OverallQual + GrLivArea + GarageArea + FullBath + YearBuilt, data = property)
+summary(reg_sales)
+```
+<br>
+We get the Adjusted R square value as 0.7522 which means these variables explain 75.22% variabiltiy in Sale Price.
+
+We check the same model after removing outliers.
+##### Removing Outliers
+```{r}
+property_mod <- property[-c(524, 1299),]
+```
+<br>
+#### Linear regression Model without Outliers
+```{r}
+reg_sales <- lm(SalePrice ~ OverallQual + GrLivArea + GarageArea + FullBath + YearBuilt, data = property_mod)
+summary(reg_sales)
+```
+Clearly omitting the outliers improve the model as we get the Adjusted R square value as 0.7851 which means these 5 variables explains 78.51% variabiltiy in Sale Price.
+```{r}
+reg_sales <- lm(SalePrice ~ OverallQual + GrLivArea + GarageArea + YearBuilt, data = property_mod)
+summary(reg_sales)
+```
+<br>
+Here we see that omitting FullBath has not really affected the model as such with 78.14% of variability still explained by the remaining 4 variables. This can be explained by the significant correlation between the variables FullBath and GrLivArea.
+
+Let us check with nonlinear models. From the graphs earlier, it seemed that OverallQual and YearBuilt had some nonlinear relationship with SalePrice.
+```{r}
+reg_sales <- lm(SalePrice ~ poly(OverallQual,2) + GrLivArea + GarageArea + poly(YearBuilt,3), data = property_mod)
+summary(reg_sales)
+```
+<br>
+Clearly, the polynomial terms improves the model fit with the Adjusted R square being 0.8266, which means that these variables explain 82.66% of variability in Sale Price.
+
+In a graph earlier we saw that Central Air has some effect on Sale Price when checked with Overall Quality. Also House Style might have some influence on Ground Living Area. Let us check if including the interaction improves the model or not.
+```{r}
+reg_sales <- lm(SalePrice ~ poly(OverallQual,2) * CentralAir +  GrLivArea * HouseStyle + GarageArea + poly(YearBuilt, 3), data = property_mod)
+summary(reg_sales)
+```
+<br>
+Clearly, the including the interactions improve the model as we see that the Adjusted R Square increases to 0.8508 meaning 85.08% of variability in Sale Price can be explained by these variables.
+
+What if, if we use the complete dataset to see if there are any other variable which can improve the Adjusted R square value.
+
+```{r}
+reg_sales_mod <- lm(SalePrice ~ ., data = property_mod)
+summary(reg_sales_mod)
+```
+</br>
+This Model gives us the Adjusted R Square value of .8644, which means this models improves the accuracy by almost 2%. However, this model includes variables which are not significant. When we make a model with only the significant variables:
+
+```{r}
+reg_sales_lin <- lm(SalePrice ~ LotArea + BldgType + HouseStyle + OverallQual + OverallCond + YearBuilt + GrLivArea + BedroomAbvGr + KitchenAbvGr + KitchenQual + GarageArea + SaleCondition, data = property_mod)
+summary(reg_sales_lin)
+```
+<br>
+The Adjusted R square value remains the same while we could eliminate the variables which are not significant. Therefore, this is the best linear model. However, as we have seen earlier, few variables show quadriatic relationship with Sale Price (like Overall Quality and Year Built). Also from the graphs earlier and correlation matrix, we can assume that some of the variables will have some interaction with other variables. For example, Overall Quality of the house might have interaction with that of Central Air, or Ground Living Area might depend on the House Style. For that we need to check with the nonlinear model including the interactions.
+```{r}
+reg_sales_non <- lm(SalePrice ~ LotArea + BldgType + poly(OverallQual,3) : CentralAir + OverallCond + GrLivArea * HouseStyle + BedroomAbvGr + KitchenAbvGr + KitchenQual + poly(YearBuilt,3) + GarageArea + SaleCondition, data = property_mod)
+summary(reg_sales_non)
+```
+<br>
+The model fit increases by almost 2.8% when we introduce non-linearity as well as interaction. Also all the variables are significant. Hence, this model seems to be the right fit.
+
+We had earlier removed the outliers. Now we check whether removing them the outliers has created any negative impact on the final model or not.
+```{r}
+reg_sales_non <- lm(SalePrice ~ LotArea + BldgType + poly(OverallQual,3) : CentralAir + OverallCond + GrLivArea * HouseStyle + BedroomAbvGr + KitchenAbvGr + KitchenQual + poly(YearBuilt,3) + GarageArea + SaleCondition, data = property)
+summary(reg_sales_non)
+```
+<br>
+We see that the Adjusted R Square value drastically decreases when we include the outliers. Also, the interaction variable of Overall Quality with that of Full Bath becomes less significant. Thus we can conclude that removing the outliers was a good call as they would have made a statistically very significant variable less significant. 
+
+Now we check the individual model performances with the help of PRESS statistic
+#### Non-linear model without Outliers
+```{r}
+# now calculate cross-validated residuals
+n <- nrow(property_mod)
+cv_res1 = vector(length=n)
+for(i in 1:n){
+  fiti = lm(SalePrice ~ LotArea + BldgType + poly(OverallQual,3) : CentralAir + OverallCond + GrLivArea * HouseStyle + BedroomAbvGr + KitchenAbvGr + KitchenQual + poly(YearBuilt,3) + GarageArea + SaleCondition, data = property_mod[-i,])
+  predi = predict(fiti, newdata=property_mod[i,])
+  cv_res1[i] = property_mod$SalePrice[i] - predi
+}
+
+# PRESS is sum of squared cross-validated residuals
+PRESS1 = sum(cv_res1^2)
+PRESS1
+```
+
+#### Non-linear model with Outliers
+```{r}
+# now calculate cross-validated residuals
+n <- nrow(property)
+cv_res1 = vector(length=n)
+for(i in 1:n){
+  fiti = lm(SalePrice ~ LotArea + BldgType + poly(OverallQual,3) : CentralAir + OverallCond + GrLivArea * HouseStyle + BedroomAbvGr + KitchenAbvGr + KitchenQual + poly(YearBuilt,3) + GarageArea + SaleCondition, data = property[-i,])
+  predi = predict(fiti, newdata=property[i,])
+  cv_res1[i] = property$SalePrice[i] - predi
+}
+
+# PRESS is sum of squared cross-validated residuals
+PRESS2 = sum(cv_res1^2)
+PRESS2
+```
+#### Linear model without Outliers
+```{r}
+# now calculate cross-validated residuals
+n <- nrow(property_mod)
+cv_res1 = vector(length=n)
+for(i in 1:n){
+  fiti = lm(SalePrice ~ LotArea + BldgType + HouseStyle + OverallQual + OverallCond + YearBuilt + GrLivArea + BedroomAbvGr + KitchenAbvGr +                       KitchenQual + GarageArea + SaleCondition, data=property_mod[-i,])
+  predi = predict(fiti, newdata=property_mod[i,])
+  cv_res1[i] = property_mod$SalePrice[i] - predi
+}
+
+# PRESS is sum of squared cross-validated residuals
+PRESS3 = sum(cv_res1^2)
+PRESS3
+```
+<br>
+Clearly, the PRESS statistics also shows that the non-linear model without outliers has the best performance as it has the least PRESS value. Hence it is the best model.
+
+**Question 3**: Develop a classification model to predict whether a property has a fireplace or not.
+The variable Fireplace has already been set as a factor variable earlier in the analysis. 
+
+As Fireplace is a binary variable taking only the values of 0 and 1, a logit model is used to model the probability of having a fireplace in a property (ranging from 0 to 1).  
+
+The model is p(x) = P(Fireplace=1|X=x) where X is a vector of all explanatory variables used in the model and x corresponds to the value of explanatory variables for a given property. 
+
+The model equation gives p(x) = [e^(β0+ β’X)] / [1+ e^(β0+ β’X)], where X is a vector of all explanatory variables and β is a vector of corresponding coefficients to the explanatory variables. The coefficients of the model are estimated by using the method of maximum likelihood. 
+
+To specify a logit model with useful predictors, we first include all of the variables and then remove one variable with the highest p-value each time from the model until all remaining variables are highly significant (i.e., at 0.1% level as indicated by *** in the R output). 
+
+The R script showing the process of finding the right regression model with all useful predictors is as follows: 
+
+```{r}
+##Setting all categorical variables as factors
+
+property$MSZoning <- as.factor(property$MSZoning) 
+property$BldgType <- as.factor(property$BldgType) 
+property$HouseStyle <- as.factor(property$HouseStyle) 
+property$CentralAir <- as.factor(property$CentralAir) 
+property$KitchenQual <- as.factor(property$KitchenQual) 
+property$Fireplace <- as.factor(property$Fireplace) 
+property$SaleCondition <- as.factor(property$SaleCondition) 
+```
+#### Finding the model
+```{r}
+# all variables included in the model 
+
+logreg1 <- glm(Fireplace ~ MSZoning+LotArea+BldgType+HouseStyle+OverallQual+OverallCond+YearBuilt+CentralAir+GrLivArea+FullBath+HalfBath+BedroomAbvGr+KitchenAbvGr+KitchenQual+GarageArea+SaleCondition+SalePrice,family=binomial, data=property) 
+
+summary(logreg1) 
+```
+```{r}
+# remove MSZoning 
+
+logreg1a <- glm(Fireplace ~ LotArea+BldgType+HouseStyle+OverallQual+OverallCond+YearBuilt+CentralAir+GrLivArea+FullBath+HalfBath+BedroomAbvGr+KitchenAbvGr+KitchenQual+GarageArea+SaleCondition+SalePrice,family=binomial, data=property) 
+
+summary(logreg1a) 
+```
+```{r}
+# remove KitchenQual 
+
+logreg1b <- glm(Fireplace ~ LotArea+BldgType+HouseStyle+OverallQual+OverallCond+YearBuilt+CentralAir+GrLivArea+FullBath+HalfBath+BedroomAbvGr+KitchenAbvGr+GarageArea+SaleCondition+SalePrice,family=binomial, data=property) 
+
+summary(logreg1b) 
+```
+```{r}
+# remove SaleCondition 
+
+logreg1c <- glm(Fireplace ~ LotArea+BldgType+HouseStyle+OverallQual+OverallCond+YearBuilt+CentralAir+GrLivArea+FullBath+HalfBath+BedroomAbvGr+KitchenAbvGr+GarageArea+SalePrice,family=binomial, data=property) 
+
+summary(logreg1c) 
+```
+```{r}
+# remove FullBath 
+
+logreg1d <- glm(Fireplace ~ LotArea+BldgType+HouseStyle+OverallQual+OverallCond+YearBuilt+CentralAir+GrLivArea+HalfBath+BedroomAbvGr+KitchenAbvGr+GarageArea+SalePrice,family=binomial, data=property) 
+
+summary(logreg1d) 
+```
+```{r}
+# remove BldgType 
+
+logreg1e <- glm(Fireplace ~ LotArea+HouseStyle+OverallQual+OverallCond+YearBuilt+CentralAir+GrLivArea+HalfBath+BedroomAbvGr+KitchenAbvGr+GarageArea+SalePrice,family=binomial, data=property) 
+
+summary(logreg1e)
+```
+```{r}
+# remove HouseStyle 
+
+logreg1f <- glm(Fireplace ~ LotArea+OverallQual+OverallCond+YearBuilt+CentralAir+GrLivArea+HalfBath+BedroomAbvGr+KitchenAbvGr+GarageArea+SalePrice,family=binomial, data=property) 
+
+summary(logreg1f) 
+```
+```{r}
+# remove HalfBath 
+
+logreg1g <- glm(Fireplace ~ LotArea+OverallQual+OverallCond+YearBuilt+CentralAir+GrLivArea+BedroomAbvGr+KitchenAbvGr+GarageArea+SalePrice,family=binomial, data=property) 
+
+summary(logreg1g) 
+```
+```{r}
+# remove GarageArea 
+
+logreg1h <- glm(Fireplace ~ LotArea+OverallQual+OverallCond+YearBuilt+CentralAir+GrLivArea+BedroomAbvGr+KitchenAbvGr+SalePrice,family=binomial, data=property) 
+
+summary(logreg1h) 
+```
+```{r}
+# remove OverallQual 
+
+logreg1i <- glm(Fireplace ~ LotArea+OverallCond+YearBuilt+CentralAir+GrLivArea+BedroomAbvGr+KitchenAbvGr+SalePrice,family=binomial, data=property) 
+
+summary(logreg1i) 
+```
+```{r}
+# remove OverallCond 
+
+logreg1j <- glm(Fireplace ~ LotArea+YearBuilt+CentralAir+GrLivArea+BedroomAbvGr+KitchenAbvGr+SalePrice,family=binomial, data=property) 
+
+summary(logreg1j) 
+```
+```{r}
+# remove LotArea 
+
+logreg_final <- glm(Fireplace ~ YearBuilt+CentralAir+GrLivArea+BedroomAbvGr+KitchenAbvGr+SalePrice,family=binomial, data=property) 
+
+summary(logreg_final) 
+```
+<br>
+By excluding the variable with the highest p-value at each step, we obtain the final model (logreg_final) with all explanatory variables that are highly significant. Predictors included in this model are YearBuilt (original construction date), CentralAirY (central air conditioning), GrLivArea (above grade/ground living area square feet), BedroomAbvGr (bedrooms above grade), KitchenAbvGr (kitchens above grade) and SalePrice.  
+ 
+The following plots explore the relationship between Fireplace and SalePrice and between Fireplace and GrLivArea respectively under the specified logit model.
+```{r}
+# plot SalePrice
+logreg2 <- glm(Fireplace ~ SalePrice, family=binomial, data=property) 
+
+summary(logreg2)
+```
+```{r}
+SalePricevals_logit <- seq(from=min(property$SalePrice),to=max(property$SalePrice),length=1200) 
+
+Fireplacevals_logit <- predict(logreg2, newdata=data.frame(SalePrice=SalePricevals_logit),type="response") 
+
+plot(x=SalePricevals_logit,y=Fireplacevals_logit,type="l",xlab="Sale Price",ylab="Fireplace Probability") 
+```
+<br>
+The plot above illustrates that for a property with a sale price above $300,000, there is a very high probability that a fireplace would come with the property.
+```{r}
+# plot GrLivArea
+logreg3 <- glm(Fireplace ~ GrLivArea, family=binomial, data=property) 
+
+summary(logreg3)
+```
+```{r}
+GrLivAreavals_logit <- seq(from=min(property$GrLivArea), to=max(property$GrLivArea), length=1200) 
+
+Fireplacevals_logit_1 <- predict(logreg3, newdata=data.frame(GrLivArea=GrLivAreavals_logit), type="response") 
+
+plot(x=GrLivAreavals_logit,y=Fireplacevals_logit_1, type="l", xlab="Above Grade Living Area", ylab="Fireplace Probability") 
+```
+<br>
+Meanwhile, the plot with GrLivArea indicates that for a property with above grade living area greater than 3,000 square feet, there is a very high probability that the property has a fireplace. 
+
+#### Assessing the performance of logreg_final model 
+```{r}
+# create a test sample 
+n <- nrow(property) 
+testindex <- sample(1:n, size=n/3)   
+# test dataset 
+test <- property[testindex,] 
+nrow(test) 
+# training dataset 
+train <- property[-testindex,] 
+nrow(train) 
+# fit the logreg_final model to training data 
+logreg <- glm(Fireplace ~ YearBuilt+CentralAir+GrLivArea+BedroomAbvGr+KitchenAbvGr+SalePrice,family=binomial,data=train) 
+# calculate predicted probabilities for the test data 
+testprob <- predict(logreg, newdata=test,type="response")  
+length(testprob) 
+# compare the prediction from the classifier using the test data predictors with the actual responses of the test data 
+testpred <- rep("No",nrow(test)) 
+testpred[testprob>0.5] <- "Yes"  
+table(testpred) 
+table(test$Fireplace) 
+```
+```{r}
+# Confusion Matrix 
+confmatrix <- table(test$Fireplace, testpred)
+# True Positive Rate 
+TPR <- confmatrix[2,2]/(confmatrix[2,2]+confmatrix[2,1]) 
+#False Positive Rate 
+FPR <- confmatrix[1,2]/(confmatrix[1,1]+confmatrix[1,2])  
+# Misclassification Rate 
+MR <- (confmatrix[1,2]+confmatrix[2,1])/nrow(test) 
+```
+<br>
+In order to assess the performance of the model logreg_final, we test the model by splitting the dataset into training and test dataset. A training dataset is created by randomly taking 2/3 of the whole dataset while the rest 1/3 of the dataset is used to test the model created using the training data.  
+
+To assess the performance of the model, a confusion matrix is created to compare the vector testpred with the default column in the test dataset. 
+
+The result for the confusion matrix is presented as below.  
+
+TPR = TP / (TP + FN) = 184 / 262 = 0.7022901 
+FPR = FP / (TN + FP) = 50 / 224 = 0.2232143 
+MR = (FP + FN) / n = (50 + 78) / 486 = 0.2633745
+```{r}
+# ROC plot 
+plot(FPR, TPR, xlim=c(0,1), ylim=c(0,1) ) 
+abline(0,1, col="blue") 
+```
+<br>
+When the result is presented in a ROC plot as shown below, we can see that the classifier is in the top left of the graph and above the 45-degree line, indicating that this is a relatively good classifier. 
+
+In addition, the mis-classification rate is 0.2633745, which is also moderately low. 
